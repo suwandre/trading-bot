@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  trading-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - MONGODB_URI=mongodb://mongodb:27017/trading-bot
+      - MONGODB_ENABLED=true
+    env_file:
+      - .env
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+    networks:
+      - trading-bot-network
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=trading-bot
+    restart: unless-stopped
+    networks:
+      - trading-bot-network
+
+volumes:
+  mongodb-data:
+
+networks:
+  trading-bot-network:
+    driver: bridge

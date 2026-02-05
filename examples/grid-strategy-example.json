@@ -1,0 +1,26 @@
+{
+  "id": "grid-eth-range",
+  "name": "ETH Grid Trading 2000-2500",
+  "type": "grid",
+  "symbol": "ETH/USDT",
+  "timeframe": "5m",
+  "mode": "backtest",
+  "parameters": {
+    "gridLevels": 10,
+    "gridSpacingPercent": 2,
+    "upperPrice": 2500,
+    "lowerPrice": 2000,
+    "quantityPerGrid": 0.1,
+    "reinvestProfits": true
+  },
+  "riskParams": {
+    "maxPositionSize": 10000,
+    "maxOpenPositions": 10,
+    "maxDrawdownPercent": 25
+  },
+  "status": "active",
+  "initialCapital": 10000,
+  "currentCapital": 10000,
+  "createdAt": "2026-02-04T00:00:00.000Z",
+  "updatedAt": "2026-02-04T00:00:00.000Z"
+}

@@ -1,0 +1,27 @@
+{
+  "id": "dca-btc-daily",
+  "name": "BTC Daily DCA",
+  "type": "dca",
+  "symbol": "BTC/USDT",
+  "timeframe": "15m",
+  "mode": "backtest",
+  "parameters": {
+    "investmentAmount": 100,
+    "interval": "daily",
+    "takeProfitPercent": 10,
+    "averageDown": true,
+    "averageDownPercent": 5,
+    "maxAverageDowns": 3
+  },
+  "riskParams": {
+    "stopLossPercent": 15,
+    "maxPositionSize": 5000,
+    "maxOpenPositions": 1,
+    "maxDrawdownPercent": 20
+  },
+  "status": "active",
+  "initialCapital": 10000,
+  "currentCapital": 10000,
+  "createdAt": "2026-02-04T00:00:00.000Z",
+  "updatedAt": "2026-02-04T00:00:00.000Z"
+}

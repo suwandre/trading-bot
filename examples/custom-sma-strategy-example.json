@@ -1,0 +1,25 @@
+{
+  "id": "sma-btc-crossover",
+  "name": "BTC SMA Crossover",
+  "type": "custom",
+  "symbol": "BTC/USDT",
+  "timeframe": "15m",
+  "mode": "backtest",
+  "parameters": {
+    "fastPeriod": 10,
+    "slowPeriod": 30,
+    "positionSizePercent": 10
+  },
+  "riskParams": {
+    "stopLossPercent": 3,
+    "takeProfitPercent": 6,
+    "maxPositionSize": 5000,
+    "maxOpenPositions": 1,
+    "maxDrawdownPercent": 15
+  },
+  "status": "active",
+  "initialCapital": 10000,
+  "currentCapital": 10000,
+  "createdAt": "2026-02-04T00:00:00.000Z",
+  "updatedAt": "2026-02-04T00:00:00.000Z"
+}
