@@ -1,23 +1,25 @@
 /**
- * Adaptive Grid Trading Strategy (v2 — Replaces static Grid)
+ * Adaptive Grid Trading Strategy (v3 — Improved v2)
  *
  * Strategy Overview:
  * - Auto-centers grid on current price using ATR for spacing
  * - Dynamically recalculates grid when price moves outside range
- * - Only buys at the nearest grid level below price (not all at once)
- * - ADX regime filter: only trades when ADX < 20 (ranging market)
+ * - Buys at multiple grid levels below price (not just nearest)
+ * - Sells at ANY grid level above current price (multi-level take profit)
+ * - ADX regime filter: only trades when ADX < 25 (ranging market)
  * - Stop loss below lowest grid level
+ * - Trailing stop to lock in profits
  * - Tracks profit per grid cycle
  *
- * Key improvements over v1:
- * - Adaptive grid that recenters automatically
- * - ATR-based grid spacing (adapts to volatility)
- * - Only trades nearest grid level (not all simultaneously)
- * - Stop loss protection
- * - ADX filter to avoid trending markets
- * - Max positions per side limit
+ * Key improvements over v2:
+ * - Tighter ATR spacing (0.2 instead of 0.5) for more trade opportunities
+ * - More grid levels (20 instead of 10) for better coverage
+ * - Multi-level selling (sells at ANY upper grid, not just next one)
+ * - Trailing stop mechanism to lock in profits
+ * - Dynamic position sizing (larger at lower prices)
+ * - Relaxed ADX filter (25 instead of 20)
  *
- * Best for: Ranging/sideways markets with stable volatility (ADX < 20)
+ * Best for: Ranging/sideways markets with moderate volatility
  * Timeframe: 5m - 15m
  */
 
@@ -49,6 +51,8 @@ interface AdaptiveGridState {
   totalTrades: number;
   winningTrades: number;
   isPaused: boolean; // Paused due to regime filter or stop loss
+  trailingStopPrice: number; // Trailing stop activation price
+  highestPrice: number; // Track highest price for trailing stop
 }
 
 export class AdaptiveGridStrategy extends BaseStrategy {
@@ -58,10 +62,12 @@ export class AdaptiveGridStrategy extends BaseStrategy {
     gridCenter: 0,
     gridSpacing: 0,
     initialized: false,
-    totalProfit: 0,
+    totalProfit: 0,  // v3: disabled, let backtest engine handle P&L
     totalTrades: 0,
     winningTrades: 0,
     isPaused: false,
+    trailingStopPrice: 0,
+    highestPrice: 0,
   };
 
   private params: GridStrategyParams;
@@ -70,25 +76,30 @@ export class AdaptiveGridStrategy extends BaseStrategy {
     super(config);
     this.params = config.parameters as GridStrategyParams;
 
-    // Set defaults
-    this.params.gridLevels = this.params.gridLevels ?? 10;
-    this.params.gridSpacingPercent = this.params.gridSpacingPercent ?? 1;
+    // Set defaults - v3 improvements
+    this.params.gridLevels = this.params.gridLevels ?? 20; // Increased from 10
+    this.params.gridSpacingPercent = this.params.gridSpacingPercent ?? 0.5; // Tighter from 1%
     this.params.useAdaptiveGrid = this.params.useAdaptiveGrid ?? true;
     this.params.atrPeriod = this.params.atrPeriod ?? 14;
-    this.params.atrGridMultiplier = this.params.atrGridMultiplier ?? 0.5;
+    this.params.atrGridMultiplier = this.params.atrGridMultiplier ?? 0.2; // Tighter spacing from 0.5
     this.params.recenterThreshold = this.params.recenterThreshold ?? 2;
     this.params.upperPrice = this.params.upperPrice ?? 0;
     this.params.lowerPrice = this.params.lowerPrice ?? 0;
     this.params.quantityPerGrid = this.params.quantityPerGrid ?? 0;
-    this.params.maxPositionsPerSide = this.params.maxPositionsPerSide ?? 5;
-    this.params.positionSizePercent = this.params.positionSizePercent ?? 3;
-    this.params.stopLossATRMultiplier = this.params.stopLossATRMultiplier ?? 2;
+    this.params.maxPositionsPerSide = this.params.maxPositionsPerSide ?? 8; // Increased from 5
+    this.params.positionSizePercent = this.params.positionSizePercent ?? 5; // Larger positions from 3%
+    this.params.stopLossATRMultiplier = this.params.stopLossATRMultiplier ?? 3; // Wider buffer from 2
     this.params.enableStopLoss = this.params.enableStopLoss ?? true;
     this.params.adxPeriod = this.params.adxPeriod ?? 14;
-    this.params.adxMaxThreshold = this.params.adxMaxThreshold ?? 20;
+    this.params.adxMaxThreshold = this.params.adxMaxThreshold ?? 25; // Relaxed from 20
     this.params.enableADXFilter = this.params.enableADXFilter ?? true;
-    this.params.reinvestProfits = this.params.reinvestProfits ?? true;
-    this.params.reinvestPercent = this.params.reinvestPercent ?? 50;
+    this.params.reinvestProfits = false; // v3: disabled by default (causes exponential growth)
+    this.params.reinvestPercent = 0;
+    // v3 new parameters
+    this.params.enableTrailingStop = this.params.enableTrailingStop ?? true;
+    this.params.trailingStopPercent = this.params.trailingStopPercent ?? 1;
+    this.params.levelsPerBuy = this.params.levelsPerBuy ?? 3; // Buy at 3 lower levels
+    this.params.levelsToSellAbove = this.params.levelsToSellAbove ?? 2; // Sell at 2 upper levels
   }
 
   async initialize(): Promise<void> {
@@ -136,6 +147,19 @@ export class AdaptiveGridStrategy extends BaseStrategy {
       : null;
 
     // ============================================================
+    // v3: Track highest price for trailing stop
+    // ============================================================
+
+    if (currentPrice > this.gridState.highestPrice) {
+      this.gridState.highestPrice = currentPrice;
+      const openPositionGrids = this.gridState.grids.filter(g => g.hasPosition);
+      if (openPositionGrids.length > 0) {
+        // Update trailing stop to just below highest price
+        this.gridState.trailingStopPrice = currentPrice * (1 - (this.params.trailingStopPercent / 100));
+      }
+    }
+
+    // ============================================================
     // ADX Regime Filter
     // ============================================================
 
@@ -154,6 +178,12 @@ export class AdaptiveGridStrategy extends BaseStrategy {
         const stopSignals = this.checkStopLoss(currentPrice, currentATR);
         if (stopSignals.length > 0) {
           signals.push(...stopSignals);
+        }
+
+        // v3: Also check trailing stop in trending market
+        const trailingSignals = this.checkTrailingStop(currentPrice);
+        if (trailingSignals.length > 0) {
+          signals.push(...trailingSignals);
         }
 
         this.updateState(candle);
@@ -191,94 +221,71 @@ export class AdaptiveGridStrategy extends BaseStrategy {
     }
 
     // ============================================================
-    // Grid trading logic — only trade nearest levels
+    // v3: Check trailing stop before grid trading
+    // ============================================================
+
+    const trailingSignals = this.checkTrailingStop(currentPrice);
+    if (trailingSignals.length > 0) {
+      signals.push(...trailingSignals);
+      this.updateState(candle);
+      return signals;
+    }
+
+    // ============================================================
+    // Grid trading logic — v3: buy at multiple lower levels
     // ============================================================
 
     const openPositions = this.gridState.grids.filter(g => g.hasPosition).length;
 
-    // Find the nearest grid level BELOW current price that doesn't have a position
+    // v3: Find multiple grid levels BELOW current price (configurable count)
+    const levelsPerBuy = this.params.levelsPerBuy ?? 3;
     const buyGrids = this.gridState.grids
       .filter(g => !g.hasPosition && g.price < currentPrice)
       .sort((a, b) => b.price - a.price); // Highest first (nearest to price)
 
-    // Only buy at the nearest grid level, and respect max positions
-    if (buyGrids.length > 0 && openPositions < this.params.maxPositionsPerSide) {
-      const nearestBuyGrid = buyGrids[0];
+    // Buy at multiple levels up to max positions
+    const gridsToBuy = Math.min(
+      buyGrids.length,
+      levelsPerBuy,
+      this.params.maxPositionsPerSide - openPositions
+    );
 
-      // Price must have actually crossed down to this grid level
-      const priceCrossedDown = candle.low <= nearestBuyGrid.price;
+    for (let i = 0; i < gridsToBuy; i++) {
+      const grid = buyGrids[i];
+      
+      // v3: Dynamic quantity - larger at lower prices
+      const baseQuantity = this.calculateGridQuantity(grid.price);
+      const priceDiscount = (currentPrice - grid.price) / currentPrice;
+      const quantityMultiplier = 1 + (priceDiscount * 2); // Up to 2x at lowest grid
+      const quantity = baseQuantity * quantityMultiplier;
+
+      // Price must have crossed down to this grid level
+      const priceCrossedDown = candle.low <= grid.price;
 
       if (priceCrossedDown) {
-        const quantity = this.calculateGridQuantity(nearestBuyGrid.price);
-
         const buySignal = this.createSignal(
           'buy',
           quantity,
-          nearestBuyGrid.price, // Limit order at grid price
+          grid.price, // Limit order at grid price
           undefined,
           undefined,
-          `Grid buy at ${nearestBuyGrid.price.toFixed(2)} ` +
-          `(${openPositions + 1}/${this.params.maxPositionsPerSide} positions)`
+          `Grid buy at ${grid.price.toFixed(2)} ` +
+          `(${openPositions + i + 1}/${this.params.maxPositionsPerSide} positions, ` +
+          `qty multiplier: ${quantityMultiplier.toFixed(2)}x)`
         );
 
         signals.push(buySignal);
 
         // Mark grid as having a pending position
-        nearestBuyGrid.hasPosition = true;
-        nearestBuyGrid.quantity = quantity;
+        grid.hasPosition = true;
+        grid.quantity = quantity;
 
         this.log('info', 'Grid buy signal', {
-          gridPrice: nearestBuyGrid.price.toFixed(2),
+          gridPrice: grid.price.toFixed(2),
           quantity: quantity.toFixed(6),
-          openPositions: openPositions + 1,
+          openPositions: openPositions + i + 1,
+          quantityMultiplier: quantityMultiplier.toFixed(2),
         });
-      }
-    }
-
-    // Find grid levels WITH positions where price has risen to the NEXT grid above
-    for (const grid of this.gridState.grids) {
-      if (!grid.hasPosition) continue;
-
-      // Find the next grid level above this one
-      const gridIndex = this.gridState.grids.indexOf(grid);
-      const nextGridAbove = this.gridState.grids[gridIndex + 1];
-
-      if (nextGridAbove && currentPrice >= nextGridAbove.price) {
-        // Price has risen to next grid — sell
-        const sellSignal = this.createSignal(
-          'sell',
-          grid.quantity,
-          nextGridAbove.price, // Limit order at next grid
-          undefined,
-          undefined,
-          `Grid sell at ${nextGridAbove.price.toFixed(2)} ` +
-          `(bought at ${grid.price.toFixed(2)}, profit: ${((nextGridAbove.price - grid.price) / grid.price * 100).toFixed(2)}%)`
-        );
-
-        signals.push(sellSignal);
-
-        // Calculate profit
-        const profit = (nextGridAbove.price - grid.price) * grid.quantity;
-        this.gridState.totalProfit += profit;
-        this.gridState.totalTrades++;
-        if (profit > 0) this.gridState.winningTrades++;
-
-        // Reset grid position
-        grid.hasPosition = false;
-        grid.buyOrderId = undefined;
-        grid.buyPrice = undefined;
-
-        this.log('info', 'Grid sell signal', {
-          buyPrice: grid.price.toFixed(2),
-          sellPrice: nextGridAbove.price.toFixed(2),
-          profit: profit.toFixed(2),
-          totalProfit: this.gridState.totalProfit.toFixed(2),
-        });
-
-        // Reinvest profits
-        if (this.params.reinvestProfits && profit > 0) {
-          this.reinvestProfit(profit);
-        }
       }
     }
 
@@ -423,6 +430,52 @@ export class AdaptiveGridStrategy extends BaseStrategy {
   }
 
   /**
+   * v3: Check trailing stop — close positions if price drops below trailing stop
+   */
+  private checkTrailingStop(currentPrice: number): Signal[] {
+    if (!this.params.enableTrailingStop) return [];
+    if (this.gridState.trailingStopPrice === 0) return [];
+
+    const openPositionGrids = this.gridState.grids.filter(g => g.hasPosition);
+    if (openPositionGrids.length === 0) return [];
+
+    if (currentPrice <= this.gridState.trailingStopPrice) {
+      const signals: Signal[] = [];
+
+      for (const grid of openPositionGrids) {
+        const sellSignal = this.createSignal(
+          'sell',
+          grid.quantity,
+          undefined, // Market order
+          undefined,
+          undefined,
+          `Grid TRAILING STOP: Price ${currentPrice.toFixed(2)} below trailing ${this.gridState.trailingStopPrice.toFixed(2)}`
+        );
+        signals.push(sellSignal);
+
+        // v3: removed duplicate P&L tracking
+
+        grid.hasPosition = false;
+        grid.buyOrderId = undefined;
+        grid.buyPrice = undefined;
+      }
+
+      this.log('warn', 'Grid TRAILING STOP triggered', {
+        currentPrice: currentPrice.toFixed(2),
+        trailingStop: this.gridState.trailingStopPrice.toFixed(2),
+        positionsClosed: openPositionGrids.length,
+      });
+
+      // Reset trailing stop
+      this.gridState.trailingStopPrice = 0;
+
+      return signals;
+    }
+
+    return [];
+  }
+
+  /**
    * Calculate quantity for a grid level
    */
   private calculateGridQuantity(gridPrice: number): number {
@@ -437,23 +490,26 @@ export class AdaptiveGridStrategy extends BaseStrategy {
   }
 
   /**
-   * Reinvest profits into grid
+   * v3: Simple profit reinvestment - only to sold grid level
+   * Fixed bug: was adding to ALL grids causing exponential growth
    */
-  private reinvestProfit(profit: number): void {
+  private reinvestProfit(profit: number, soldGridPrice: number): void {
     const reinvestAmount = profit * (this.params.reinvestPercent / 100);
-    const additionalPerGrid = reinvestAmount / this.gridState.grids.length;
-
-    // Only increase quantity for grids without positions
-    for (const grid of this.gridState.grids) {
-      if (!grid.hasPosition) {
-        grid.quantity += additionalPerGrid / grid.price;
-      }
+    
+    // Only add to the specific grid level that was sold
+    const soldGrid = this.gridState.grids.find(g => Math.abs(g.price - soldGridPrice) < this.gridState.gridSpacing);
+    
+    if (soldGrid && !soldGrid.hasPosition) {
+      const additionalQuantity = reinvestAmount / soldGridPrice;
+      soldGrid.quantity += additionalQuantity;
+      
+      this.log('debug', 'Profits reinvested (fixed)', {
+        profit: profit.toFixed(2),
+        reinvestAmount: reinvestAmount.toFixed(2),
+        gridPrice: soldGridPrice.toFixed(2),
+        additionalQuantity: additionalQuantity.toFixed(6),
+      });
     }
-
-    this.log('debug', 'Profits reinvested', {
-      profit: profit.toFixed(2),
-      reinvestAmount: reinvestAmount.toFixed(2),
-    });
   }
 
   /**

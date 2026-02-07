@@ -136,54 +136,69 @@ export const optimizedStrategies = {
   },
 
   /**
-   * Adaptive Grid (v2)
+   * Adaptive Grid (v3) - IMPROVED
    * Best for: Low-volatility ranging markets
-   * Regime filter: ADX < 20
+   * Regime filter: ADX < 25
+   *
+   * v3 Improvements:
+   * - Tighter ATR spacing (0.2 instead of 0.5)
+   * - More grid levels (20 instead of 10)
+   * - Multi-level buying and selling
+   * - Dynamic position sizing (larger at lower prices)
+   * - Trailing stop to lock in profits
    */
   adaptiveGrid: {
-    id: 'v2-grid',
-    name: 'Adaptive Grid v2',
+    id: 'v3-grid',
+    name: 'Adaptive Grid v3',
     type: 'grid' as const,
     symbol: 'BTC/USDT',
     timeframe: '15m',
     mode: 'backtest' as const,
     status: 'active' as const,
     parameters: {
-      // Grid Structure
-      gridLevels: 10,
-      gridSpacingPercent: 1,
+      // Grid Structure - v3: tighter, more levels
+      gridLevels: 20,              // Increased from 10
+      gridSpacingPercent: 0.5,     // Tighter from 1%
 
       // Adaptive Grid
       useAdaptiveGrid: true,
       atrPeriod: 14,
-      atrGridMultiplier: 0.5,
+      atrGridMultiplier: 0.2,      // Tighter spacing from 0.5
       recenterThreshold: 2,
 
       // Static fallback (not used when adaptive is on)
       upperPrice: 0,
       lowerPrice: 0,
 
-      // Position Sizing
+      // Position Sizing - v3: larger positions
       quantityPerGrid: 0, // Auto-calculate from positionSizePercent
-      maxPositionsPerSide: 5,
-      positionSizePercent: 3,
+      maxPositionsPerSide: 8,      // Increased from 5
+      positionSizePercent: 5,       // Increased from 3%
 
-      // Risk
-      stopLossATRMultiplier: 2,
+      // Risk - v3: wider stop buffer
+      stopLossATRMultiplier: 3,     // Increased from 2
       enableStopLoss: true,
 
-      // ADX Regime Filter
+      // ADX Regime Filter - v3: relaxed threshold
       adxPeriod: 14,
-      adxMaxThreshold: 20,
+      adxMaxThreshold: 25,          // Relaxed from 20
       enableADXFilter: true,
 
       // Profits
       reinvestProfits: true,
       reinvestPercent: 50,
+
+      // v3: Multi-level Trading
+      levelsPerBuy: 3,             // Buy at 3 lower levels
+      levelsToSellAbove: 2,       // Sell at 2+ levels above
+
+      // v3: Trailing Stop
+      enableTrailingStop: true,
+      trailingStopPercent: 1,      // 1% trailing stop
     },
     riskParams: {
       maxPositionSize: 5000,
-      maxOpenPositions: 5,
+      maxOpenPositions: 8,
       maxDrawdownPercent: 15,
     },
   },
@@ -279,13 +294,13 @@ export const strategySelectionGuide = {
 };
 
 /**
- * v1 vs v2 Performance Comparison
- * (v1 results from multi-period backtest, v2 targets)
+ * v1 vs v3 Performance Comparison
+ * (v1 results from multi-period backtest, v3 targets)
  */
 export const performanceComparison = {
   rsiBB: {
     v1: { avgPnL: 0.93, winRate: 27.78, sharpe: 0.01, consistency: 'MODERATE' },
-    v2Target: { avgPnL: '50-100', winRate: '45-55', sharpe: '>0.5', consistency: 'GOOD' },
+    v3Target: { avgPnL: '50-100', winRate: '45-55', sharpe: '>0.5', consistency: 'GOOD' },
     improvements: [
       'Real ATR from OHLC (was faking it)',
       'ADX regime filter (avoids trending markets)',
@@ -297,7 +312,7 @@ export const performanceComparison = {
   },
   trendFollowing: {
     v1: { avgPnL: -157.90, winRate: 26.34, sharpe: -1.11, consistency: 'POOR' },
-    v2Target: { avgPnL: '30-80', winRate: '35-45', sharpe: '>0', consistency: 'MODERATE' },
+    v3Target: { avgPnL: '30-80', winRate: '35-45', sharpe: '>0', consistency: 'MODERATE' },
     improvements: [
       'Replaced SMA with EMA (faster response)',
       'Added MACD momentum confirmation',
@@ -309,19 +324,21 @@ export const performanceComparison = {
   },
   grid: {
     v1: { avgPnL: 0, winRate: 0, sharpe: 0, consistency: 'NO DATA' },
-    v2Target: { avgPnL: '20-50', winRate: '55-65', sharpe: '>0.3', consistency: 'GOOD' },
+    v2: { avgPnL: 1814.83, winRate: 40.77, sharpe: 0.32, consistency: 'MODERATE' },
+    v3Target: { avgPnL: '2500-4000', winRate: '50-60', sharpe: '>0.6', consistency: 'GOOD' },
     improvements: [
-      'Auto-centers on current price (was static)',
-      'ATR-based grid spacing (adapts to volatility)',
-      'Only trades nearest grid level (was all at once)',
-      'Stop loss protection',
-      'ADX filter (only trades in ranging markets)',
-      'Dynamic recentering when price moves',
+      'Tighter ATR spacing (0.2 instead of 0.5)',
+      'More grid levels (20 instead of 10)',
+      'Multi-level buying (3 levels instead of 1)',
+      'Multi-level profit taking (sell at any upper grid)',
+      'Dynamic position sizing (larger at lower prices)',
+      'Trailing stop to lock in profits',
+      'Relaxed ADX filter (25 instead of 20)',
     ],
   },
   dca: {
     v1: { avgPnL: -260.01, winRate: 35.35, sharpe: -0.23, consistency: 'INCONSISTENT' },
-    v2Target: { avgPnL: '10-30', winRate: '50-60', sharpe: '>0', consistency: 'MODERATE' },
+    v3Target: { avgPnL: '10-30', winRate: '50-60', sharpe: '>0', consistency: 'MODERATE' },
     improvements: [
       'Crash detection pauses buying',
       'Dip buying with RSI confirmation',

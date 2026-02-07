@@ -153,16 +153,16 @@ export interface DCAStrategyParams {
   dipBuyMultiplier: number;           // Multiply investmentAmount by this on dips (1.5)
 }
 
-// Adaptive Grid Strategy Parameters
+// Adaptive Grid Strategy Parameters (v3)
 export interface GridStrategyParams {
   // Grid Structure
-  gridLevels: number;               // Number of grid levels (10-20)
-  gridSpacingPercent: number;       // Spacing between grids as % (1-3)
+  gridLevels: number;               // Number of grid levels (10-20, default: 20)
+  gridSpacingPercent: number;       // Spacing between grids as % (0.5-2, default: 0.5)
 
   // Adaptive Grid — auto-centers on current price
   useAdaptiveGrid: boolean;         // Default: true — auto-calculate upper/lower from ATR
   atrPeriod: number;                // ATR period for grid spacing (14)
-  atrGridMultiplier: number;        // Grid range = ATR * this * gridLevels (0.5)
+  atrGridMultiplier: number;        // Grid range = ATR * this * gridLevels (0.2-0.5, default: 0.2)
   recenterThreshold: number;        // Recenter when price moves this many grid spacings from center (2)
 
   // Static Grid (fallback if useAdaptiveGrid is false)
@@ -171,21 +171,29 @@ export interface GridStrategyParams {
 
   // Position Sizing
   quantityPerGrid: number;          // Quantity to trade per grid level
-  maxPositionsPerSide: number;      // Max buy positions at once (5)
-  positionSizePercent: number;      // % of capital per grid level (2-5)
+  maxPositionsPerSide: number;      // Max buy positions at once (5-10, default: 8)
+  positionSizePercent: number;      // % of capital per grid level (3-10, default: 5)
 
   // Risk Management
-  stopLossATRMultiplier: number;    // Close all if price drops below lowest grid - ATR * this (2)
+  stopLossATRMultiplier: number;    // Close all if price drops below lowest grid - ATR * this (2-4, default: 3)
   enableStopLoss: boolean;          // Default: true
 
   // ADX Regime Filter — only trade in ranging markets
   adxPeriod: number;                // ADX period (14)
-  adxMaxThreshold: number;          // Only trade when ADX < this (20)
+  adxMaxThreshold: number;          // Only trade when ADX < this (20-30, default: 25)
   enableADXFilter: boolean;         // Default: true
 
   // Profit Management
   reinvestProfits: boolean;         // Reinvest profits into grid
   reinvestPercent: number;          // % of profits to reinvest (50)
+
+  // v3: Multi-level Trading
+  levelsPerBuy: number;             // How many lower grid levels to buy at once (1-5, default: 3)
+  levelsToSellAbove: number;       // How many levels above to trigger take profit (1-3, default: 2)
+
+  // v3: Trailing Stop
+  enableTrailingStop: boolean;      // Enable trailing stop to lock in profits (default: true)
+  trailingStopPercent: number;      // Trailing stop distance in % (0.5-2, default: 1)
 }
 
 // Custom Strategy Parameters

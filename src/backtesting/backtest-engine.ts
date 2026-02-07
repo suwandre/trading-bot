@@ -277,8 +277,13 @@ export class BacktestEngine implements IBacktestEngine {
       
       for (const trade of trades) {
         if (trade.side === 'buy' && !trade.pnl) {
-          // Calculate unrealized P&L for BUY trades
-          trade.pnl = (finalPrice - trade.price) * trade.quantity - trade.fee;
+          // Only calculate unrealized P&L for OPEN positions (position still held)
+          // If the trade was already closed by a SELL, pnl would be set
+          if (currentPosition > 0 && trade.quantity <= currentPosition) {
+            trade.pnl = (finalPrice - trade.price) * trade.quantity - trade.fee;
+          } else {
+            trade.pnl = 0; // Trade was already closed
+          }
         }
       }
 
