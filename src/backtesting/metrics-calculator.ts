@@ -28,17 +28,23 @@ export class MetricsCalculator {
       equityPoints: equity.length,
     });
 
-    // Separate winning and losing trades
+    // Separate winning and losing trades (only closed positions with realized P&L)
     const winningTrades = trades.filter((t) => t.pnl && t.pnl > 0);
     const losingTrades = trades.filter((t) => t.pnl && t.pnl < 0);
 
-    // Calculate total P&L
-    const totalPnL = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+    // Calculate realized P&L from closed trades
+    const realizedPnL = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
     const totalWins = winningTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
     const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + (t.pnl || 0), 0));
 
-    // Calculate win rate
-    const winRate = trades.length > 0 ? winningTrades.length / trades.length : 0;
+    // Calculate total P&L from equity curve (includes unrealized P&L)
+    const initialEquity = equity.length > 0 ? equity[0].equity : initialCapital;
+    const finalEquity = equity.length > 0 ? equity[equity.length - 1].equity : initialCapital;
+    const totalPnL = finalEquity - initialEquity;
+
+    // Calculate win rate (based on closed positions only)
+    const closedTrades = winningTrades.length + losingTrades.length;
+    const winRate = closedTrades > 0 ? winningTrades.length / closedTrades : 0;
 
     // Calculate average win/loss
     const averageWin = winningTrades.length > 0 ? totalWins / winningTrades.length : 0;
@@ -64,7 +70,7 @@ export class MetricsCalculator {
       losingTrades: losingTrades.length,
       winRate,
       totalPnL,
-      totalPnLPercent: (totalPnL / initialCapital) * 100,
+      totalPnLPercent: (totalPnL / initialEquity) * 100,
       averageWin,
       averageLoss,
       profitFactor,

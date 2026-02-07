@@ -100,6 +100,8 @@ export class BacktestEngine implements IBacktestEngine {
       const equity: EquityPoint[] = [];
       const openOrders: Order[] = [];
       let currentCapital = config.initialCapital;
+      let currentPosition = 0; // Current BTC position held
+      let avgBuyPrice = 0; // Average buy price for current position
       let orderCounter = 0;
 
       // Initial equity point
@@ -164,25 +166,35 @@ export class BacktestEngine implements IBacktestEngine {
 
             trades.push(trade);
 
-            // Update capital
+            // Update capital and position tracking
             if (order.side === 'buy') {
               currentCapital -= fill.quantity * fill.price + fill.fee;
+              
+              // Update position tracking for unrealized P&L
+              if (currentPosition === 0) {
+                // First buy - set position
+                currentPosition = fill.quantity;
+                avgBuyPrice = fill.price;
+              } else {
+                // Add to existing position - recalculate average price
+                const totalCost = (currentPosition * avgBuyPrice) + (fill.quantity * fill.price);
+                const totalQuantity = currentPosition + fill.quantity;
+                currentPosition = totalQuantity;
+                avgBuyPrice = totalCost / totalQuantity;
+              }
             } else {
               currentCapital += fill.quantity * fill.price - fill.fee;
-
+              
               // Calculate P&L for sell orders
-              // Find corresponding buy trade(s) to calculate profit
-              const buyTrades = trades.filter(
-                (t) => t.strategyId === strategy.id && t.side === 'buy'
-              );
-
-              if (buyTrades.length > 0) {
-                // Simple P&L calculation (can be enhanced with FIFO/LIFO)
-                const avgBuyPrice =
-                  buyTrades.reduce((sum, t) => sum + t.price * t.quantity, 0) /
-                  buyTrades.reduce((sum, t) => sum + t.quantity, 0);
-
+              if (avgBuyPrice > 0) {
                 trade.pnl = (fill.price - avgBuyPrice) * fill.quantity - fill.fee;
+              }
+              
+              // Update position tracking
+              currentPosition -= fill.quantity;
+              if (currentPosition <= 0) {
+                currentPosition = 0;
+                avgBuyPrice = 0;
               }
             }
 
@@ -238,10 +250,12 @@ export class BacktestEngine implements IBacktestEngine {
           }
         }
 
-        // Record equity
+        // Record equity (includes unrealized P&L from open position)
+        const unrealizedValue = currentPosition * candle.close;
+        const totalEquity = currentCapital + unrealizedValue;
         equity.push({
           timestamp: candle.timestamp,
-          equity: currentCapital,
+          equity: totalEquity,
         });
 
         // Log progress periodically
@@ -257,6 +271,17 @@ export class BacktestEngine implements IBacktestEngine {
       // Stop strategy
       await strategy.stop();
 
+      // Update unrealized P&L for all BUY trades based on final price
+      const lastCandle = candles[candles.length - 1];
+      const finalPrice = lastCandle.close;
+      
+      for (const trade of trades) {
+        if (trade.side === 'buy' && !trade.pnl) {
+          // Calculate unrealized P&L for BUY trades
+          trade.pnl = (finalPrice - trade.price) * trade.quantity - trade.fee;
+        }
+      }
+
       // Calculate metrics
       const metrics = this.metricsCalculator.calculateMetrics(
         strategy.id,
@@ -270,11 +295,15 @@ export class BacktestEngine implements IBacktestEngine {
 
       const duration = Date.now() - startTime;
 
+      // Calculate final equity (including unrealized P&L)
+      const unrealizedValue = currentPosition * finalPrice;
+      const finalEquity = currentCapital + unrealizedValue;
+
       logger.info('Backtest completed', {
         duration: `${(duration / 1000).toFixed(2)}s`,
         candlesProcessed: this.progress.processedCandles,
         totalTrades: trades.length,
-        finalCapital: currentCapital.toFixed(2),
+        finalCapital: finalEquity.toFixed(2),
         totalPnL: metrics.totalPnL.toFixed(2),
         totalPnLPercent: metrics.totalPnLPercent.toFixed(2),
       });

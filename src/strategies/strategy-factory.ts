@@ -5,8 +5,10 @@
 
 import type { IStrategy, StrategyConfig, StrategyType } from '../types';
 import { DCAStrategy } from './dca/dca-strategy';
-import { GridStrategy } from './grid/grid-strategy';
+import { AdaptiveGridStrategy } from './grid/adaptive-grid-strategy';
 import { CustomStrategyTemplate } from './custom/custom-strategy-template';
+import { RSIBBStrategy } from './mean-reversion/rsi-bb-strategy';
+import { EMAMACDADXStrategy } from './trend/ema-macd-adx-strategy';
 import { StrategyError } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 
@@ -28,10 +30,16 @@ export class StrategyFactory {
         return new DCAStrategy(config);
 
       case 'grid':
-        return new GridStrategy(config);
+        return new AdaptiveGridStrategy(config);
 
       case 'custom':
         return new CustomStrategyTemplate(config);
+
+      case 'mean-reversion':
+        return new RSIBBStrategy(config);
+
+      case 'trend-following':
+        return new EMAMACDADXStrategy(config);
 
       default:
         throw new StrategyError(
@@ -112,6 +120,14 @@ export class StrategyFactory {
       case 'custom':
         // Custom strategies can have any parameters
         break;
+
+      case 'mean-reversion':
+        // RSI + BB parameters are optional with defaults
+        break;
+
+      case 'trend-following':
+        // TODO: Add validation when implemented
+        break;
     }
 
     return errors;
@@ -148,28 +164,23 @@ export class StrategyFactory {
   private static validateGridParams(params: any): string[] {
     const errors: string[] = [];
 
-    if (!params.gridLevels || params.gridLevels < 2) {
-      errors.push('Grid: Grid levels must be at least 2');
+    if (!params.gridLevels || params.gridLevels < 3) {
+      errors.push('Grid: Grid levels must be at least 3');
     }
 
-    if (!params.upperPrice || params.upperPrice <= 0) {
-      errors.push('Grid: Upper price must be positive');
-    }
+    // For non-adaptive grids, require upper/lower price
+    if (params.useAdaptiveGrid === false) {
+      if (!params.upperPrice || params.upperPrice <= 0) {
+        errors.push('Grid: Upper price must be positive (required for non-adaptive grid)');
+      }
 
-    if (!params.lowerPrice || params.lowerPrice <= 0) {
-      errors.push('Grid: Lower price must be positive');
-    }
+      if (!params.lowerPrice || params.lowerPrice <= 0) {
+        errors.push('Grid: Lower price must be positive (required for non-adaptive grid)');
+      }
 
-    if (params.upperPrice && params.lowerPrice && params.upperPrice <= params.lowerPrice) {
-      errors.push('Grid: Upper price must be greater than lower price');
-    }
-
-    if (!params.quantityPerGrid || params.quantityPerGrid <= 0) {
-      errors.push('Grid: Quantity per grid must be positive');
-    }
-
-    if (!params.gridSpacingPercent || params.gridSpacingPercent <= 0) {
-      errors.push('Grid: Grid spacing percent must be positive');
+      if (params.upperPrice && params.lowerPrice && params.upperPrice <= params.lowerPrice) {
+        errors.push('Grid: Upper price must be greater than lower price');
+      }
     }
 
     return errors;
@@ -179,7 +190,7 @@ export class StrategyFactory {
    * Get available strategy types
    */
   static getAvailableTypes(): StrategyType[] {
-    return ['dca', 'grid', 'custom'];
+    return ['dca', 'grid', 'custom', 'mean-reversion', 'trend-following'];
   }
 
   /**
@@ -187,9 +198,11 @@ export class StrategyFactory {
    */
   static getStrategyDescription(type: StrategyType): string {
     const descriptions: Record<StrategyType, string> = {
-      dca: 'Dollar Cost Averaging - Invest fixed amounts at regular intervals',
-      grid: 'Grid Trading - Place buy/sell orders at predefined price levels',
+      dca: 'Smart DCA - Market-aware dollar cost averaging with crash detection and dip buying',
+      grid: 'Adaptive Grid Trading - Auto-centering grid with ATR spacing and ADX filter',
       custom: 'Custom Strategy - Implement your own trading logic',
+      'mean-reversion': 'Mean Reversion - RSI + Bollinger Bands for oversold bounces',
+      'trend-following': 'Trend Following - EMA + MACD + ADX multi-indicator trend strategy',
     };
 
     return descriptions[type];
