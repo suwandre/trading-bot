@@ -2,8 +2,7 @@ mod db;
 mod models;
 mod errors;
 mod config;
-
-use std::env;
+mod api;
 
 use dotenvy::dotenv;
 use tracing::info;
@@ -18,11 +17,16 @@ async fn main() {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    let database_url = env::var("DATABASE_URL")
-        .expect("(main) DATABASE_URL must be set in .env");
+    let config = config::Config::from_env();
+    let pool = db::create_pool(&config.database_url).await;
+    info!("Connected to Postgres");
 
-    let pool = db::create_pool(&database_url).await;
-    info!("(main) Connected to Postgres");
+    let state = api::AppState { db: pool };
+    let router = api::create_router(state);
 
-    info!("(main) Trading bot starting...");
+    let addr = format!("0.0.0.0:{}", config.port);
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    info!("Server running on http://{}", addr);
+
+    axum::serve(listener, router).await.unwrap();
 }
