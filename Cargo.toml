@@ -18,7 +18,7 @@ reqwest = { version = "0.13.2", default-features = false, features = ["rustls", 
 tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
 
 # ── Database ──────────────────────────────────────────────
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "macros"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "macros", "rust_decimal"] }
 
 # ── Serialization ─────────────────────────────────────────
 serde = { version = "1.0.228", features = ["derive"] }
@@ -32,6 +32,7 @@ anyhow = "1.0.101"
 uuid = { version = "1.21.0", features = ["v4"] }
 chrono = { version = "0.4.43", features = ["serde"] }
 dotenvy = "0.15.7"
+rust_decimal = { version = "1.40.0", features = ["serde-with-float"]}
 
 # ── Logging & Tracing ─────────────────────────────────────
 tracing = "0.1.44"
